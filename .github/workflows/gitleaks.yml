@@ -1,3 +1,4 @@
+
 name: gitleaks
 
 on:
@@ -8,24 +9,68 @@ jobs:
   secrets:
     name: Secret scanning (Gitleaks)
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Gitleaks scan
-        continue-on-error: true #tijdelijke bpass voor geen error op de run
+      - name: Create custom Gitleaks config
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
-            git /repo --redact \
-            --report-format sarif --report-path /repo/gitleaks.sarif \
-            --report-format json --report-path /repo/gitleaks.json
+          cat > gitleaks.toml <<'EOF'
+          title = "Unbreakable Secret Scanning"
+
+          [extend]
+          useDefault = true
+
+          # Checkt hardcoded wachtwoorden
+          [[rules]]
+          id = "custom-password"
+          description = "Detect hardcoded passwords"
+          regex = '''(?i)\b(?:password|passwd|pwd|db_password|postgres_password)\b["']?\s*[:=]\s*["']?([^"'\s#]{6,})'''
+          secretGroup = 1
+          tags = ["password", "configuration"]
+
+          # Checkt PostgreSQL connection strings met credentials
+          [[rules]]
+          id = "custom-database-credentials"
+          description = "Detect PostgreSQL credentials"
+          regex = '''(?i)postgres(?:ql)?://[^:\s/@]+:([^@\s/]+)@'''
+          secretGroup = 1
+          tags = ["database", "postgresql"]
+
+          # Checkt hardcoded JWT signing secrets
+          [[rules]]
+          id = "custom-jwt-secret"
+          description = "Detect JWT signing secrets"
+          regex = '''(?i)\b(?:jwt_secret|jwt_signing_key|jwt_signing_secret)\b["']?\s*[:=]\s*["']?([^"'\s#]{8,})'''
+          secretGroup = 1
+          tags = ["jwt", "authentication"]
+
+          # Checkt Docker Compose databasewachtwoorden
+          [[rules]]
+          id = "custom-docker-password"
+          description = "Detect Docker credentials"
+          regex = '''(?i)\b(?:POSTGRES_PASSWORD|DATABASE_PASSWORD|REDIS_PASSWORD)\b["']?\s*[:=]\s*["']?([^"'\s#]{6,})'''
+          secretGroup = 1
+          tags = ["docker", "credentials"]
+          EOF
+
+      - name: Gitleaks scan
+        continue-on-error: true # Tijdelijke bypass
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo" \
+            zricethezav/gitleaks:latest \
+            git /repo \
+            --config /repo/gitleaks.toml \
+            --redact \
+            --report-format json \
+            --report-path /repo/gitleaks.json
 
       - name: Rapport bewaren
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-report
-          path: |
-            gitleaks.sarif
-            gitleaks.json
+          path: gitleaks.json

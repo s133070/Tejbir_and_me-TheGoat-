@@ -17,11 +17,14 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
             git /repo --redact \
-            --report-format sarif --report-path /repo/gitleaks.sarif
+            --report-format sarif --report-path /repo/gitleaks.sarif \
+            --report-format json --report-path /repo/gitleaks.json
 
       - name: Rapport bewaren
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-report
-          path: gitleaks.sarif
+          path: |
+            gitleaks.sarif
+            gitleaks.json

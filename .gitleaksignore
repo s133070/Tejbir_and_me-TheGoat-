@@ -1,0 +1,16 @@
+# Baseline Gitleaks: bevindingen uit de ongewijzigde starter-app.
+# Formaat: commit:bestand:regel:lijnnummer
+
+# Databankwachtwoord in de connection string (appsettings.json).
+# Echt probleem, bewust in de starter-app. Wordt opgelost in opdracht 3 (naar GitHub Secrets).
+f77e4d4f6672e0734717b4c1ed1578944fbd000e:app/appsettings.json:custom-password:11
+
+# Notifications:ApiKey in appsettings.json. Wordt niet gebruikt in de code,
+# het endpoint bestaat niet. Demo-waarde van de starter-app.
+f77e4d4f6672e0734717b4c1ed1578944fbd000e:app/appsettings.json:generic-api-key:15
+
+# Hetzelfde databankwachtwoord in docker-compose.yml (connection string en POSTGRES_PASSWORD).
+# Echt probleem, bewust in de starter-app. Wordt opgelost in opdracht 3.
+f77e4d4f6672e0734717b4c1ed1578944fbd000e:docker-compose.yml:custom-password:7
+f77e4d4f6672e0734717b4c1ed1578944fbd000e:docker-compose.yml:custom-password:17
+f77e4d4f6672e0734717b4c1ed1578944fbd000e:docker-compose.yml:custom-docker-password:17

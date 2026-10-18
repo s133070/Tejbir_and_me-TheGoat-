@@ -7,13 +7,6 @@ name: trivy
 
 on:
   workflow_call:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    # The branches below must be a subset of the branches above
-    branches: [ "main" ]
-  schedule:
-    - cron: '44 9 * * 2'
 
 permissions:
   contents: read

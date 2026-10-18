@@ -1,1 +1,5 @@
+# Baseline Trivy: CVE's uit de ongewijzigde starter-app.
 
+# Newtonsoft.Json 12.0.1 - DoS bij diep geneste JSON (HIGH, CVSS 7.5).
+# Bewust verouderde dependency in de starter-app; upgrade naar 13.0.1 in opdracht 3.
+CVE-2024-21907

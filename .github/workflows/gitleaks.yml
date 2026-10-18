@@ -56,13 +56,13 @@ jobs:
           EOF
 
       - name: Gitleaks scan
-        continue-on-error: true # Tijdelijke bypass
         run: |
           docker run --rm \
             -v "$PWD:/repo" \
             zricethezav/gitleaks:latest \
             git /repo \
             --config /repo/gitleaks.toml \
+            --gitleaks-ignore-path /repo/.gitleaksignore \
             --redact \
             --report-format json \
             --report-path /repo/gitleaks.json

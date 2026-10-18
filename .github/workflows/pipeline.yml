@@ -1,0 +1,38 @@
+name: CI/CD pipeline
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  sast:
+    uses: ./.github/workflows/codacy.yml
+    secrets: inherit   # Codacy gebruikt CODACY_PROJECT_TOKEN
+  sca:
+    uses: ./.github/workflows/trivy.yml
+  secrets:
+    uses: ./.github/workflows/gitleaks.yml
+
+  deploy:
+    needs: [sast, sca, secrets]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    concurrency: deploy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Uitrollen
+        run: docker compose -p tejbir_and_me-thegoat- up -d --build
+      - name: Healthcheck
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8080/health && exit 0
+            sleep 2
+          done
+          exit 1

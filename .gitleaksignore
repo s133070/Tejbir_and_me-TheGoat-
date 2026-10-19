@@ -14,3 +14,6 @@ f77e4d4f6672e0734717b4c1ed1578944fbd000e:app/appsettings.json:generic-api-key:15
 f77e4d4f6672e0734717b4c1ed1578944fbd000e:docker-compose.yml:custom-password:7
 f77e4d4f6672e0734717b4c1ed1578944fbd000e:docker-compose.yml:custom-password:17
 f77e4d4f6672e0734717b4c1ed1578944fbd000e:docker-compose.yml:custom-docker-password:17
+
+# Nep-wachtwoord uit de gate-test (PR #1), per ongeluk gemerged. Geen echt geheim.
+ca80c98a301a3530f0929fba3402bd862d68ae10:test.txt:custom-password:1

@@ -31,8 +31,11 @@ jobs:
         run: docker compose -p tejbir_and_me-thegoat- up -d --build
       - name: Healthcheck
         run: |
-          for i in $(seq 1 30); do
-            curl -fsS http://localhost:8080/health && exit 0
-            sleep 2
+          for i in $(seq 1 60); do
+            curl -fsSkL \
+              --resolve g13.ipv6.thelastgym.be:80:127.0.0.1 \
+              --resolve g13.ipv6.thelastgym.be:443:127.0.0.1 \
+              http://g13.ipv6.thelastgym.be/health && exit 0
+            sleep 5
           done
           exit 1

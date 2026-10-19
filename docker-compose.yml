@@ -1,13 +1,15 @@
 services:
   app:
     build: ./app
-    ports:
-      - "8080:8080"
+    # Geen ports meer: de app is enkel bereikbaar via BunkerWeb (intern netwerk bw-services).
     environment:
       ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=unbreakable;Username=unbreakable;Password=Unbr3akable!2026"
     depends_on:
       - db
     restart: unless-stopped
+    networks:
+      - bw-services
+      - app-db
 
   db:
     image: postgres:17
@@ -18,6 +20,66 @@ services:
     volumes:
       - dbdata:/var/lib/postgresql/data
     restart: unless-stopped
+    networks:
+      - app-db
+
+  # WAF en reverse proxy: het enige wat publiek bereikbaar is (80 en 443).
+  bunkerweb:
+    image: bunkerity/bunkerweb:1.6.16
+    ports:
+      - "80:8080/tcp"
+      - "443:8443/tcp"
+      - "443:8443/udp"
+    environment:
+      API_WHITELIST_IP: "127.0.0.0/8 10.20.30.0/24"
+    restart: unless-stopped
+    networks:
+      - bw-universe
+      - bw-services
+
+  # Configureert BunkerWeb en vraagt het Let's Encrypt-certificaat aan.
+  bw-scheduler:
+    image: bunkerity/bunkerweb-scheduler:1.6.16
+    depends_on:
+      - bunkerweb
+    volumes:
+      - bw-storage:/data
+    environment:
+      BUNKERWEB_INSTANCES: "bunkerweb"
+      API_WHITELIST_IP: "127.0.0.0/8 10.20.30.0/24"
+      SERVER_NAME: "g13.ipv6.thelastgym.be"
+      USE_IPV6: "yes"
+      DISABLE_DEFAULT_SERVER: "yes"
+      AUTO_LETS_ENCRYPT: "yes"
+      USE_LETS_ENCRYPT_STAGING: "yes"
+      USE_REVERSE_PROXY: "yes"
+      REVERSE_PROXY_URL: "/"
+      REVERSE_PROXY_HOST: "http://app:8080"
+      ALLOWED_METHODS: "GET|POST|HEAD|DELETE"
+      USE_MODSECURITY: "yes"
+      USE_MODSECURITY_CRS: "yes"
+    restart: unless-stopped
+    networks:
+      - bw-universe
 
 volumes:
   dbdata:
+  bw-storage:
+
+networks:
+  bw-universe:
+    name: bw-universe
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 10.20.30.0/24
+        - subnet: fd00:13:38::/64
+  bw-services:
+    name: bw-services
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 10.20.40.0/24
+        - subnet: fd00:13:37::/64
+  app-db:
+    internal: true

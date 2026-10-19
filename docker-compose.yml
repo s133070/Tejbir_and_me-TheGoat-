@@ -51,7 +51,7 @@ services:
       USE_IPV6: "yes"
       DISABLE_DEFAULT_SERVER: "yes"
       AUTO_LETS_ENCRYPT: "yes"
-      USE_LETS_ENCRYPT_STAGING: "yes"
+      USE_LETS_ENCRYPT_STAGING: "no"
       USE_REVERSE_PROXY: "yes"
       REVERSE_PROXY_URL: "/"
       REVERSE_PROXY_HOST: "http://app:8080"

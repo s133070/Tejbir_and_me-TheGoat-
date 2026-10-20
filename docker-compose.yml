@@ -1,7 +1,6 @@
 services:
   app:
     build: ./app
-    # Geen ports meer: de app is enkel bereikbaar via BunkerWeb (intern netwerk bw-services).
     environment:
       ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=unbreakable;Username=unbreakable;Password=Unbr3akable!2026"
     depends_on:
@@ -23,7 +22,6 @@ services:
     networks:
       - app-db
 
-  # WAF en reverse proxy: het enige wat publiek bereikbaar is (80 en 443).
   bunkerweb:
     image: bunkerity/bunkerweb:1.6.16
     ports:
@@ -37,16 +35,17 @@ services:
       - bw-universe
       - bw-services
 
-  # Configureert BunkerWeb en vraagt het Let's Encrypt-certificaat aan.
   bw-scheduler:
     image: bunkerity/bunkerweb-scheduler:1.6.16
     depends_on:
       - bunkerweb
+      - bw-db
     volumes:
       - bw-storage:/data
     environment:
       BUNKERWEB_INSTANCES: "bunkerweb"
       API_WHITELIST_IP: "127.0.0.0/8 10.20.30.0/24"
+      DATABASE_URI: "mariadb+pymysql://bunkerweb:${BW_DB_PASSWORD}@bw-db:3306/db"
       SERVER_NAME: "g13.ipv6.thelastgym.be"
       USE_IPV6: "yes"
       DISABLE_DEFAULT_SERVER: "yes"
@@ -61,10 +60,44 @@ services:
     restart: unless-stopped
     networks:
       - bw-universe
+      - bw-db
+
+  bw-ui:
+    image: bunkerity/bunkerweb-ui:1.6.16
+    depends_on:
+      - bw-db
+    ports:
+      - "127.0.0.1:7000:7000"
+    volumes:
+      - bw-ui-data:/data
+    environment:
+      DATABASE_URI: "mariadb+pymysql://bunkerweb:${BW_DB_PASSWORD}@bw-db:3306/db"
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "${BW_ADMIN_PASSWORD}"
+    restart: unless-stopped
+    networks:
+      - bw-universe
+      - bw-db
+
+  bw-db:
+    image: mariadb:11
+    command: --max-allowed-packet=67108864
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: "db"
+      MYSQL_USER: "bunkerweb"
+      MYSQL_PASSWORD: "${BW_DB_PASSWORD}"
+    volumes:
+      - bw-data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - bw-db
 
 volumes:
   dbdata:
   bw-storage:
+  bw-data:
+  bw-ui-data:
 
 networks:
   bw-universe:
@@ -82,4 +115,7 @@ networks:
         - subnet: 10.20.40.0/24
         - subnet: fd00:13:37::/64
   app-db:
+    internal: true
+  bw-db:
+    name: bw-db
     internal: true

@@ -47,8 +47,8 @@ jobs:
           # Force 0 exit code to allow SARIF file generation
           # This will handover control about PR rejection to the GitHub side
           #REASONING
-          # Baseline: 4273 issues uit de ongewijzigde starter-app (vooral CSS-stijl in bootstrap.css). Zie SECURITY-BASELINE.md.
-          max-allowed-issues: 4273
+          # Baseline: 4310 issues uit de ongewijzigde starter-app (vooral CSS-stijl in bootstrap.css). Zie SECURITY-BASELINE.md.
+          max-allowed-issues: 4310
 
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Unbreakable.Data;
@@ -8,12 +9,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<UnbreakableContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Unbreakable")));
 
-builder.Services.AddCors(options =>
-    options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
-
 var app = builder.Build();
 
-// Databank aanmaken en vullen met voorbeeldberichten.
+// Databank aanmaken. Geen voorbeeldberichten meer: de databank bevat enkel ciphertext.
 // De databank kan iets later opstarten dan de app, dus we proberen een paar keer.
 using (var scope = app.Services.CreateScope())
 {
@@ -25,7 +23,6 @@ using (var scope = app.Services.CreateScope())
         try
         {
             context.Database.EnsureCreated();
-            SeedData.Initialize(context);
             break;
         }
         catch (Exception ex) when (attempt < 30)
@@ -36,8 +33,11 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.UseDeveloperExceptionPage();
-app.UseCors();
+// Stack traces enkel tonen tijdens ontwikkeling, niet in productie.
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
 
 // De SPA: index.html, JavaScript en CSS uit wwwroot.
 app.UseDefaultFiles();
@@ -82,11 +82,12 @@ api.MapGet("/messages/search", async (HttpRequest request, UnbreakableContext db
         return Results.Unauthorized();
     }
 
+    // Zoeken in ciphertext heeft geen zin; enkel op afzender, met een geparametriseerde query (geen SQL-injectie).
     var q = request.Query["q"].ToString();
-    var sql = "SELECT * FROM \"Messages\" WHERE \"Recipient\" = '" + user + "' " +
-              "AND (\"Subject\" ILIKE '%" + q + "%' OR \"Body\" ILIKE '%" + q + "%')";
-
-    var messages = await db.Messages.FromSqlRaw(sql).OrderByDescending(m => m.SentAt).ToListAsync();
+    var messages = await db.Messages
+        .Where(m => m.Recipient == user && EF.Functions.ILike(m.Sender, "%" + q + "%"))
+        .OrderByDescending(m => m.SentAt)
+        .ToListAsync();
     return Results.Ok(messages);
 });
 
@@ -106,22 +107,64 @@ api.MapGet("/messages/export", async (HttpRequest request, UnbreakableContext db
     return Results.Text(JsonConvert.SerializeObject(messages, Formatting.Indented), "application/json");
 });
 
-api.MapGet("/messages/{id:int}", async (int id, UnbreakableContext db) =>
+api.MapGet("/messages/{id:int}", async (int id, HttpRequest request, UnbreakableContext db) =>
 {
-    var message = await db.Messages.FindAsync(id);
-    return message == null ? Results.NotFound() : Results.Ok(message);
-});
-
-api.MapPost("/messages", async (Message message, HttpRequest request, UnbreakableContext db) =>
-{
-    // Geen afzender meegegeven? Dan nemen we wie je bent.
-    if (string.IsNullOrEmpty(message.Sender))
+    var user = CurrentUser(request);
+    if (string.IsNullOrEmpty(user))
     {
-        message.Sender = CurrentUser(request);
+        return Results.Unauthorized();
     }
 
-    message.Id = 0;
-    message.SentAt = DateTime.UtcNow;
+    // Enkel afzender en ontvanger mogen een bericht opvragen.
+    var message = await db.Messages.FindAsync(id);
+    return message == null || (message.Recipient != user && message.Sender != user)
+        ? Results.NotFound()
+        : Results.Ok(message);
+});
+
+api.MapPost("/messages", async (NewMessage input, HttpRequest request, UnbreakableContext db) =>
+{
+    var user = CurrentUser(request);
+    if (string.IsNullOrEmpty(user))
+    {
+        return Results.Unauthorized();
+    }
+
+    // Alles valideren: enkel geldige ciphertext, lijnnummer en MAC worden opgeslagen.
+    var errors = new List<ValidationResult>();
+    if (!Validator.TryValidateObject(input, new ValidationContext(input), errors, true))
+    {
+        return Results.ValidationProblem(errors
+            .GroupBy(e => e.MemberNames.FirstOrDefault() ?? "")
+            .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray()));
+    }
+
+    // Onderwerp en bericht delen één codeboeklijn van 40 tekens.
+    if (input.Subject.Length + input.Body.Length > 40)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["Body"] = ["Onderwerp en bericht samen mogen maximaal 40 tekens zijn."]
+        });
+    }
+
+    // Afzender komt van wie je bent, niet uit het verzoek (geen spoofing via de body).
+    var message = new Message
+    {
+        Sender = user,
+        Recipient = input.Recipient,
+        Subject = input.Subject,
+        Body = input.Body,
+        KeyLine = input.KeyLine,
+        Mac = input.Mac,
+        SentAt = DateTime.UtcNow
+    };
+
+    // Lijn al gebruikt tussen deze twee? Weigeren (hergebruik van de sleutel of replay).
+    if (await db.Messages.AnyAsync(m => m.Sender == user && m.Recipient == message.Recipient && m.KeyLine == message.KeyLine))
+    {
+        return Results.Conflict("Deze codeboeklijn is al gebruikt.");
+    }
 
     db.Messages.Add(message);
     await db.SaveChangesAsync();
@@ -129,10 +172,17 @@ api.MapPost("/messages", async (Message message, HttpRequest request, Unbreakabl
     return Results.Created($"/api/messages/{message.Id}", message);
 });
 
-api.MapDelete("/messages/{id:int}", async (int id, UnbreakableContext db) =>
+api.MapDelete("/messages/{id:int}", async (int id, HttpRequest request, UnbreakableContext db) =>
 {
+    var user = CurrentUser(request);
+    if (string.IsNullOrEmpty(user))
+    {
+        return Results.Unauthorized();
+    }
+
+    // Enkel de ontvanger mag een bericht verwijderen.
     var message = await db.Messages.FindAsync(id);
-    if (message == null)
+    if (message == null || message.Recipient != user)
     {
         return Results.NotFound();
     }

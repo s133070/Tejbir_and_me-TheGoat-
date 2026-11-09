@@ -1,6 +1,7 @@
 // De schermen van Unbreakable. Navigeren gebeurt met het deel na # in de URL.
 
 import { api, currentUser, setUser } from './api.js';
+import { normalize, encrypt, decrypt, sign, verify } from './crypto.js';
 
 const app = document.getElementById('app');
 
@@ -86,7 +87,7 @@ async function renderInbox(params) {
                     </select>
                 </div>
                 <div class="col-auto">
-                    <label for="q">Zoeken</label>
+                    <label for="q">Zoek afzender</label>
                     <input id="q" class="form-control" value="${escapeHtml(q)}" />
                 </div>
                 <div class="col-auto">
@@ -98,19 +99,19 @@ async function renderInbox(params) {
         <div id="list"></div>`;
 
     if (q) {
-        window.jQuery('#searched').html('Je zocht naar: ' + q);
+        document.getElementById('searched').textContent = 'Je zocht naar: ' + q;
     }
 
     const rows = messages.map(m => `
         <tr>
             <td>${escapeHtml(m.sender)}</td>
-            <td><a href="#/bericht/${m.id}">${m.subject}</a></td>
+            <td><a href="#/bericht/${m.id}">🔒 <code>${escapeHtml(m.subject)}</code></a></td>
             <td>${formatDate(m.sentAt)}</td>
         </tr>`).join('');
 
     document.getElementById('list').innerHTML = messages.length
         ? `<table class="table">
-               <thead><tr><th>Van</th><th>Onderwerp</th><th>Verzonden</th></tr></thead>
+               <thead><tr><th>Van</th><th>Onderwerp (versleuteld)</th><th>Verzonden</th></tr></thead>
                <tbody>${rows}</tbody>
            </table>`
         : '<p class="text-muted">Geen berichten.</p>';
@@ -142,19 +143,53 @@ async function renderMessage(id) {
     const m = await api.message(id);
 
     app.innerHTML = `
-        <h1>${m.subject}</h1>
+        <h1>Versleuteld bericht</h1>
         <dl class="row">
             <dt class="col-sm-2">Van</dt><dd class="col-sm-10">${escapeHtml(m.sender)}</dd>
             <dt class="col-sm-2">Aan</dt><dd class="col-sm-10">${escapeHtml(m.recipient)}</dd>
             <dt class="col-sm-2">Verzonden</dt><dd class="col-sm-10">${formatDate(m.sentAt)}</dd>
+            <dt class="col-sm-2">Codeboeklijn</dt><dd class="col-sm-10">${m.keyLine}</dd>
+            <dt class="col-sm-2">Onderwerp</dt><dd class="col-sm-10" id="subject"><code>${escapeHtml(m.subject)}</code></dd>
+            <dt class="col-sm-2">Ciphertext</dt><dd class="col-sm-10"><code>${escapeHtml(m.body)}</code></dd>
         </dl>
-        <div class="card mb-3"><div class="card-body message-body" id="body"></div></div>
+        <form id="unlock" class="mb-3" autocomplete="off">
+            <div class="form-group">
+                <label for="key">Sleutel (lijn ${m.keyLine} uit het codeboek)</label>
+                <input id="key" type="password" class="form-control" required />
+            </div>
+            <div class="form-group">
+                <label for="hmac">HMAC-sleutel</label>
+                <input id="hmac" type="password" class="form-control" required />
+            </div>
+            <button type="submit" class="btn btn-primary">Ontsleutelen</button>
+        </form>
+        <div id="result"></div>
         <p>
             <button id="delete" class="btn btn-outline-danger">Verwijderen</button>
             <a href="#/inbox" class="btn btn-link">Terug naar je inbox</a>
         </p>`;
 
-    document.getElementById('body').textContent = m.body;
+    document.getElementById('unlock').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const result = document.getElementById('result');
+        result.className = '';
+        try {
+            // Eerst de MAC controleren, pas daarna ontsleutelen.
+            if (!await verify(m, document.getElementById('hmac').value)) {
+                result.className = 'alert alert-danger';
+                result.textContent = 'MAC ongeldig: het bericht is gewijzigd of de HMAC-sleutel is fout.';
+                return;
+            }
+            // Onderwerp gebruikt het begin van de lijn, het bericht de rest.
+            const key = document.getElementById('key').value.trim().toUpperCase();
+            document.getElementById('subject').textContent = decrypt(m.subject, key).replaceAll('_', ' ');
+            result.className = 'card card-body message-body';
+            result.textContent = decrypt(m.body, key.slice(m.subject.length)).replaceAll('_', ' ');
+        } catch (error) {
+            result.className = 'alert alert-danger';
+            result.textContent = error.message;
+        }
+    });
 
     document.getElementById('delete').addEventListener('click', async () => {
         if (confirm('Ben je zeker dat je dit bericht wil verwijderen?')) {
@@ -185,12 +220,25 @@ async function renderNew() {
                     </div>
                     <div class="form-group">
                         <label for="subject">Onderwerp</label>
-                        <input id="subject" class="form-control" required maxlength="100" />
+                        <input id="subject" class="form-control" required maxlength="39" />
                     </div>
                     <div class="form-group">
-                        <label for="text">Bericht</label>
-                        <textarea id="text" class="form-control" rows="6" required maxlength="2000"></textarea>
+                        <label for="text">Bericht (onderwerp + bericht samen max. 40 tekens: letters, cijfers en spaties)</label>
+                        <textarea id="text" class="form-control" rows="2" required maxlength="39"></textarea>
                     </div>
+                    <div class="form-group">
+                        <label for="line">Codeboeklijn</label>
+                        <input id="line" type="number" class="form-control" required min="1" max="50" />
+                    </div>
+                    <div class="form-group">
+                        <label for="key">Sleutel (de 40 tekens van die lijn)</label>
+                        <input id="key" type="password" class="form-control" required autocomplete="off" />
+                    </div>
+                    <div class="form-group">
+                        <label for="hmac">HMAC-sleutel</label>
+                        <input id="hmac" type="password" class="form-control" required autocomplete="off" />
+                    </div>
+                    <div id="error" class="text-danger mb-2"></div>
                     <button type="submit" class="btn btn-primary">Versturen</button>
                     <a href="#/inbox" class="btn btn-link">Annuleren</a>
                 </form>
@@ -199,12 +247,29 @@ async function renderNew() {
 
     document.getElementById('compose').addEventListener('submit', async (event) => {
         event.preventDefault();
-        await api.send({
-            recipient: document.getElementById('recipient').value.trim(),
-            subject: document.getElementById('subject').value,
-            body: document.getElementById('text').value,
-        });
-        location.hash = '#/inbox';
+        try {
+            // Versleutelen en MAC berekenen in de browser; enkel ciphertext, lijnnummer en MAC gaan naar de server.
+            // Onderwerp gebruikt het begin van de lijn, het bericht de rest: geen enkel sleutelteken wordt twee keer gebruikt.
+            const key = document.getElementById('key').value.trim().toUpperCase();
+            if (normalize(document.getElementById('subject').value).length
+                + normalize(document.getElementById('text').value).length > 40) {
+                throw new Error('Onderwerp en bericht samen mogen maximaal 40 tekens zijn.');
+            }
+            const subject = encrypt(document.getElementById('subject').value, key);
+            const message = {
+                sender: currentUser(),
+                recipient: document.getElementById('recipient').value.trim(),
+                keyLine: Number(document.getElementById('line').value),
+                subject,
+                body: encrypt(document.getElementById('text').value, key.slice(subject.length)),
+            };
+            message.mac = await sign(message, document.getElementById('hmac').value);
+            await api.send({ recipient: message.recipient, subject: message.subject, body: message.body,
+                             keyLine: message.keyLine, mac: message.mac });
+            location.hash = '#/inbox';
+        } catch (error) {
+            document.getElementById('error').textContent = error.message;
+        }
     });
 }
 

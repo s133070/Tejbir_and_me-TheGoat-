@@ -2,7 +2,7 @@ services:
   app:
     build: ./app
     environment:
-      ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=unbreakable;Username=unbreakable;Password=Unbr3akable!2026"
+      ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=${APP_DB_NAME};Username=${APP_DB_USER};Password=${APP_DB_PASSWORD}"
     depends_on:
       - db
     restart: unless-stopped
@@ -13,14 +13,50 @@ services:
   db:
     image: postgres:17
     environment:
-      POSTGRES_DB: unbreakable
-      POSTGRES_USER: unbreakable
-      POSTGRES_PASSWORD: Unbr3akable!2026
+      POSTGRES_DB: "${APP_DB_NAME}"
+      POSTGRES_USER: "${APP_DB_USER}"
+      POSTGRES_PASSWORD: "${APP_DB_PASSWORD}"
     volumes:
       - dbdata:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - app-db
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command: start
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: "jdbc:postgresql://kc-db:5432/${KC_DB_NAME}"
+      KC_DB_USERNAME: "${KC_DB_USER}"
+      KC_DB_PASSWORD: "${KC_DB_PASSWORD}"
+      KC_HOSTNAME: https://g13.ipv6.thelastgym.be/auth
+      KC_HOSTNAME_ADMIN: http://localhost:8081/auth
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KC_ADMIN_USER}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KC_ADMIN_PASSWORD}"
+    ports:
+      - "127.0.0.1:8081:8080"
+    depends_on:
+      - kc-db
+    restart: unless-stopped
+    networks:
+      - bw-services
+      - kc-db
+
+  kc-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: "${KC_DB_NAME}"
+      POSTGRES_USER: "${KC_DB_USER}"
+      POSTGRES_PASSWORD: "${KC_DB_PASSWORD}"
+    volumes:
+      - kcdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - kc-db
 
   bunkerweb:
     image: bunkerity/bunkerweb:1.6.16
@@ -54,6 +90,9 @@ services:
       USE_REVERSE_PROXY: "yes"
       REVERSE_PROXY_URL: "/"
       REVERSE_PROXY_HOST: "http://app:8080"
+      REVERSE_PROXY_URL_2: "/auth"
+      REVERSE_PROXY_HOST_2: "http://keycloak:8080"
+      BLACKLIST_URI: "^/auth/admin"
       ALLOWED_METHODS: "GET|POST|HEAD|DELETE"
       USE_MODSECURITY: "yes"
       USE_MODSECURITY_CRS: "yes"
@@ -95,6 +134,7 @@ services:
 
 volumes:
   dbdata:
+  kcdata:
   bw-storage:
   bw-data:
   bw-ui-data:
@@ -115,6 +155,8 @@ networks:
         - subnet: 10.20.40.0/24
         - subnet: fd00:13:37::/64
   app-db:
+    internal: true
+  kc-db:
     internal: true
   bw-db:
     name: bw-db

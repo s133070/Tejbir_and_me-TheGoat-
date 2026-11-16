@@ -2,7 +2,7 @@ services:
   app:
     build: ./app
     environment:
-      ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=${APP_DB_NAME};Username=${APP_DB_USER};Password=${APP_DB_PASSWORD}"
+      ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=${APP_DB_NAME:-unbreakable};Username=${APP_DB_USER:-unbreakable};Password=${APP_DB_PASSWORD}"
     depends_on:
       - db
     restart: unless-stopped
@@ -13,8 +13,8 @@ services:
   db:
     image: postgres:17
     environment:
-      POSTGRES_DB: "${APP_DB_NAME}"
-      POSTGRES_USER: "${APP_DB_USER}"
+      POSTGRES_DB: "${APP_DB_NAME:-unbreakable}"
+      POSTGRES_USER: "${APP_DB_USER:-unbreakable}"
       POSTGRES_PASSWORD: "${APP_DB_PASSWORD}"
     volumes:
       - dbdata:/var/lib/postgresql/data
@@ -27,15 +27,15 @@ services:
     command: start
     environment:
       KC_DB: postgres
-      KC_DB_URL: "jdbc:postgresql://kc-db:5432/${KC_DB_NAME}"
-      KC_DB_USERNAME: "${KC_DB_USER}"
+      KC_DB_URL: "jdbc:postgresql://kc-db:5432/${KC_DB_NAME:-keycloak}"
+      KC_DB_USERNAME: "${KC_DB_USER:-keycloak}"
       KC_DB_PASSWORD: "${KC_DB_PASSWORD}"
       KC_HOSTNAME: https://g13.ipv6.thelastgym.be/auth
       KC_HOSTNAME_ADMIN: http://localhost:8081/auth
       KC_HTTP_RELATIVE_PATH: /auth
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
-      KC_BOOTSTRAP_ADMIN_USERNAME: "${KC_ADMIN_USER}"
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KC_ADMIN_USER:-admin}"
       KC_BOOTSTRAP_ADMIN_PASSWORD: "${KC_ADMIN_PASSWORD}"
     ports:
       - "127.0.0.1:8081:8080"
@@ -49,8 +49,8 @@ services:
   kc-db:
     image: postgres:17
     environment:
-      POSTGRES_DB: "${KC_DB_NAME}"
-      POSTGRES_USER: "${KC_DB_USER}"
+      POSTGRES_DB: "${KC_DB_NAME:-keycloak}"
+      POSTGRES_USER: "${KC_DB_USER:-keycloak}"
       POSTGRES_PASSWORD: "${KC_DB_PASSWORD}"
     volumes:
       - kcdata:/var/lib/postgresql/data

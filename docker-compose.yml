@@ -30,8 +30,7 @@ services:
       KC_DB_URL: "jdbc:postgresql://kc-db:5432/${KC_DB_NAME:-keycloak}"
       KC_DB_USERNAME: "${KC_DB_USER:-keycloak}"
       KC_DB_PASSWORD: "${KC_DB_PASSWORD}"
-      KC_HOSTNAME: https://g13.ipv6.thelastgym.be/auth
-      KC_HOSTNAME_ADMIN: http://localhost:8081/auth
+      KC_HOSTNAME_STRICT: "false"
       KC_HTTP_RELATIVE_PATH: /auth
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded

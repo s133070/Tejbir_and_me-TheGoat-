@@ -31,6 +31,9 @@ jobs:
         env:
           BW_DB_PASSWORD: ${{ secrets.BW_DB_PASSWORD }}
           BW_ADMIN_PASSWORD: ${{ secrets.BW_ADMIN_PASSWORD }}
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+          KC_DB_PASSWORD: ${{ secrets.KC_DB_PASSWORD }}
+          KC_ADMIN_PASSWORD: ${{ secrets.KC_ADMIN_PASSWORD }}
         run: docker compose -p tejbir_and_me-thegoat- up -d --build
       - name: Healthcheck
         run: |
